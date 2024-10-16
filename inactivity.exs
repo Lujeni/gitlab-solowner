@@ -21,7 +21,6 @@ defmodule GitlabSolowners do
         case commit_datetime do
           {:ok, datetime, _offset} ->
             if DateTime.compare(datetime, @one_year_ago) == :lt do
-              Logger.info("#{project["path_with_namespace"]} is an old men")
               row = "#{project["namespace"]["path"]},#{project["path"]},#{commit["created_at"]}"
               File.write(file_path, "#{row}\n", [:append])
             end
@@ -46,9 +45,12 @@ defmodule GitlabSolowners do
     end)
 
     headers = response.headers
-    next_page = hd(headers["x-next-page"])
+    current_page = String.to_integer(hd(headers["x-page"]))
+    next_page = current_page + 1
+    total_page = String.to_integer(hd(headers["x-total-pages"]))
 
-    if next_page do
+    if next_page <= total_page do
+      Logger.info("Next pagination #{current_page}-#{next_page} on #{total_page}")
       get_projects(req, next_page, file_path)
     end
   end
