@@ -5,16 +5,18 @@ Mix.install([
 ])
 
 defmodule GitlabSolowners do
+  @gitlab_api_url System.get_env("GITLAB_API_URL") || "https://gitlab.com/api/v4/"
+
   def paginate_projects(page \\ 1) do
     one_year_ago = DateTime.utc_now() |> DateTime.add(-365 * 24 * 60 * 60, :second)
 
-    response = Req.get!("https://gitlab.com/api/v4/projects?page=#{page}")
+    response = Req.get!("#{@gitlab_api_url}/projects?page=#{page}")
     response
     |> Map.get(:body)
     |> Enum.each(fn project ->
       IO.puts("fetch #{project["name"]}")
 
-      "https://gitlab.com/api/v4/projects/#{project["id"]}/repository/commits?per_page=1"
+      "#{@gitlab_api_url}/projects/#{project["id"]}/repository/commits?per_page=1"
       |> Req.get!()
       |> Map.get(:body)
       |> Enum.each(fn commit ->
