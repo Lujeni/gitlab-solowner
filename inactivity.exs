@@ -37,12 +37,18 @@ defmodule GitlabSolowners do
   def get_projects(req, page \\ 1, file_path) do
     response = Req.get!(req, url: "/projects?page=#{page}&per_page=100")
 
-    response
-    |> Map.get(:body)
-    |> Enum.each(fn project ->
-      Logger.info("handle #{project["path_with_namespace"]}")
-      check_commit(req, project, file_path)
-    end)
+    tasks =
+      response
+      |> Map.get(:body)
+      |> Enum.map(fn project ->
+        Logger.info("handle #{project["path_with_namespace"]}")
+
+        Task.async(fn ->
+          check_commit(req, project, file_path)
+        end)
+      end)
+
+    Task.await_many(tasks)
 
     headers = response.headers
     current_page = String.to_integer(hd(headers["x-page"]))
