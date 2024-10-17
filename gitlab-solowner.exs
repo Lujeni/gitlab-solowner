@@ -7,9 +7,15 @@ Mix.install([
 require Logger
 
 defmodule GitlabSolowners do
-  @gitlab_api_url System.get_env("GITLAB_API_URL") || "https://gitlab.com/api/v4"
-  @gitlab_api_token System.get_env("GITLAB_API_TOKEN")
-  @one_year_ago DateTime.utc_now() |> DateTime.add(-365 * 24 * 60 * 60, :second)
+  @default_gitlab_api_url "https://gitlab.com/api/v4"
+  @one_year_ago DateTime.utc_now() |> DateTime.add(-365 * 2 * 24 * 60 * 60, :second)
+
+  def parse_args(args) do
+    OptionParser.parse(args,
+      switches: [help: :boolean, url: :string, token: :string],
+      aliases: [h: :help, u: :url, t: :token]
+    )
+  end
 
   def check_commit(req, project, file_path) do
     try do
@@ -30,7 +36,7 @@ defmodule GitlabSolowners do
         end
       end)
     rescue
-      e -> Logger.info("Error retrieve commits from #{project["path"]} #{inspect(e)}")
+      e -> Logger.info("Error retrieving commits from #{project["path"]}: #{inspect(e)}")
     end
   end
 
@@ -41,7 +47,7 @@ defmodule GitlabSolowners do
       response
       |> Map.get(:body)
       |> Enum.map(fn project ->
-        Logger.info("handle #{project["path_with_namespace"]}")
+        Logger.info("Handling #{project["path_with_namespace"]}")
 
         Task.async(fn ->
           check_commit(req, project, file_path)
@@ -61,21 +67,42 @@ defmodule GitlabSolowners do
     end
   end
 
-  def run() do
-    #
+  def run(args) do
+    {opts, _, _} = parse_args(args)
+
+    if opts[:help] do
+      IO.puts("""
+      Usage: gitlab_solowners [options]
+
+      Options:
+        -h, --help        Show this help message
+        -u, --url         GitLab API URL (default: #{@default_gitlab_api_url})
+        -t, --token       GitLab API Token (required if not set via environment variable)
+      """)
+
+      System.halt(0)
+    end
+
+    gitlab_api_url = opts[:url] || System.get_env("GITLAB_API_URL") || @default_gitlab_api_url
+    gitlab_api_token = opts[:token] || System.get_env("GITLAB_API_TOKEN")
+
+    if gitlab_api_token == nil do
+      Logger.error("GitLab API Token is required. Use --token or set GITLAB_API_TOKEN.")
+      System.halt(1)
+    end
+
     timestamp = :os.system_time(:millisecond)
     random_part = :crypto.strong_rand_bytes(8) |> Base.encode16() |> String.downcase()
     filename = "#{timestamp}_#{random_part}"
     file_path = Path.join(["/tmp", filename])
-    File.write(file_path, "")
-    Logger.info("Generate file #{file_path}")
+    File.write!(file_path, "")
+    Logger.info("Generated file #{file_path}")
 
-    #
     req =
-      Req.new(base_url: @gitlab_api_url, auth: {:bearer, @gitlab_api_token}, http_errors: :raise)
+      Req.new(base_url: gitlab_api_url, auth: {:bearer, gitlab_api_token}, http_errors: :raise)
 
     get_projects(req, 1, file_path)
   end
 end
 
-GitlabSolowners.run()
+GitlabSolowners.run(System.argv())

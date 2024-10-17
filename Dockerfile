@@ -4,4 +4,4 @@ RUN apk update && \
   apk add --no-cache git
 WORKDIR /app
 COPY . .
-CMD ["elixir", "inactivity.exs"]
+CMD ["elixir", "gitlab-solowner.exs", "--help"]
