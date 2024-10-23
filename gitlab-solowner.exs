@@ -8,6 +8,7 @@ require Logger
 
 defmodule GitlabSolowners do
   @default_gitlab_api_url "https://gitlab.com/api/v4"
+  # Define the time boundary to consider a commit as inactive (two years ago)
   @one_year_ago DateTime.utc_now() |> DateTime.add(-365 * 2 * 24 * 60 * 60, :second)
 
   def parse_args(args) do
@@ -17,7 +18,8 @@ defmodule GitlabSolowners do
     )
   end
 
-  def check_commit(req, project, file_path) do
+  # Fetches commit activity from a project and writes inactive repositories to a file
+  def check_activity(req, project, file_path) do
     try do
       Req.get!(req, url: "/projects/#{project["id"]}/repository/commits?per_page=1")
       |> Map.get(:body)
@@ -27,7 +29,8 @@ defmodule GitlabSolowners do
         case commit_datetime do
           {:ok, datetime, _offset} ->
             if DateTime.compare(datetime, @one_year_ago) == :lt do
-              row = "#{project["namespace"]["path"]},#{project["path"]},#{commit["created_at"]}"
+              row =
+                "#{project["namespace"]["path"]},#{project["path"]},#{commit["created_at"]},None"
               File.write(file_path, "#{row}\n", [:append])
             end
 
@@ -40,21 +43,54 @@ defmodule GitlabSolowners do
     end
   end
 
-  def get_projects(req, page \\ 1, file_path) do
-    response = Req.get!(req, url: "/projects?page=#{page}&per_page=100")
+  # Analyzes the authors of the repository to find dominant committers
+  def check_authors(req, project, file_path) do
+    try do
+      authors =
+        Req.get!(req, url: "/projects/#{project["id"]}/repository/commits?per_page=1000")
+        |> Map.get(:body)
+        |> Enum.map(fn commit -> commit["author_email"] end)
+        |> Enum.frequencies()
 
-    tasks =
+      total_commits = Enum.reduce(authors, 0, fn {_key, value}, acc -> acc + value end)
+      authors_per_percent =
+        Enum.map(authors, fn {name, count} -> {name, count / total_commits * 100} end)
+
+      Enum.each(authors_per_percent, fn {item, percentage} ->
+        if percentage > 80 do
+          row = "#{project["namespace"]["path"]},#{project["path"]},None,#{item}"
+          File.write(file_path, "#{row}\n", [:append])
+        end
+      end)
+    rescue
+      e -> Logger.info("Error retrieving commits from #{project["path"]}: #{inspect(e)}")
+    end
+  end
+
+  # Fetches all GitLab projects and processes them in pages, checking for activity and authors
+  def get_projects(req, page \\ 1, file_path) do
+    response = Req.get!(req, url: "/projects?archived=False&page=#{page}")
+
+    # Create tasks to check activity for each project concurrently
+    activity_tasks =
       response
       |> Map.get(:body)
       |> Enum.map(fn project ->
         Logger.info("Handling #{project["path_with_namespace"]}")
-
-        Task.async(fn ->
-          check_commit(req, project, file_path)
-        end)
+        Task.async(fn -> check_activity(req, project, file_path) end)
       end)
 
-    Task.await_many(tasks)
+    # Create tasks to check authorship for each project concurrently
+    authors_tasks =
+      response
+      |> Map.get(:body)
+      |> Enum.map(fn project ->
+        Logger.info("Handling #{project["path_with_namespace"]}")
+        Task.async(fn -> check_authors(req, project, file_path) end)
+      end)
+
+    Task.await_many(activity_tasks)
+    Task.await_many(authors_tasks)
 
     headers = response.headers
     current_page = String.to_integer(hd(headers["x-page"]))
