@@ -13,8 +13,8 @@ defmodule GitlabSolowners do
 
   def parse_args(args) do
     OptionParser.parse(args,
-      switches: [help: :boolean, url: :string, token: :string],
-      aliases: [h: :help, u: :url, t: :token]
+      switches: [help: :boolean, url: :string, token: :string, paginate: :boolean],
+      aliases: [h: :help, u: :url, t: :token, p: :paginate]
     )
   end
 
@@ -68,7 +68,7 @@ defmodule GitlabSolowners do
   end
 
   # Fetches all GitLab projects and processes them in pages, checking for activity and authors
-  def get_projects(req, page \\ 1, file_path) do
+  def get_projects(req, page \\ 1, gitlab_api_paginate, file_path) do
     response = Req.get!(req, url: "/projects?archived=False&page=#{page}")
 
     # Create tasks to check activity for each project concurrently
@@ -97,7 +97,7 @@ defmodule GitlabSolowners do
     next_page = current_page + 1
     total_page = String.to_integer(hd(headers["x-total-pages"]))
 
-    if next_page <= total_page do
+    if gitlab_api_paginate and next_page <= total_page do
       Logger.info("Next pagination #{current_page}-#{next_page} on #{total_page}")
       get_projects(req, next_page, file_path)
     end
@@ -114,6 +114,7 @@ defmodule GitlabSolowners do
         -h, --help        Show this help message
         -u, --url         GitLab API URL (default: #{@default_gitlab_api_url})
         -t, --token       GitLab API Token (required if not set via environment variable)
+        -p, --paginate    GitLab API Paginate (required if not set via environment variable)
       """)
 
       System.halt(0)
@@ -121,6 +122,7 @@ defmodule GitlabSolowners do
 
     gitlab_api_url = opts[:url] || System.get_env("GITLAB_API_URL") || @default_gitlab_api_url
     gitlab_api_token = opts[:token] || System.get_env("GITLAB_API_TOKEN")
+    gitlab_api_paginate = opts[:paginate] || System.get_env("GITLAB_API_paginate") || false
 
     if gitlab_api_token == nil do
       Logger.error("GitLab API Token is required. Use --token or set GITLAB_API_TOKEN.")
@@ -137,7 +139,7 @@ defmodule GitlabSolowners do
     req =
       Req.new(base_url: gitlab_api_url, auth: {:bearer, gitlab_api_token}, http_errors: :raise)
 
-    get_projects(req, 1, file_path)
+    get_projects(req, 1, gitlab_api_paginate, file_path)
   end
 end
 
