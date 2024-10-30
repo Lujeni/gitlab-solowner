@@ -67,6 +67,14 @@ defmodule GitlabSolowners do
     end
   end
 
+  def check_registries(req, project, file_path) do
+      Req.get!(req, url: "/projects/#{project["id"]}/registry/repositories")
+      |> Map.get(:body)
+      |> Enum.map(fn registry_repository ->
+          Logger.info("Handling #{project["path_with_namespace"]} :: #{registry_repository["path"]}")
+        end)
+  end
+
   # Fetches all GitLab projects and processes them in pages, checking for activity and authors
   def get_projects(req, page \\ 1, gitlab_api_paginate, file_path) do
     response = Req.get!(req, url: "/projects?archived=False&page=#{page}")
@@ -85,12 +93,19 @@ defmodule GitlabSolowners do
       response
       |> Map.get(:body)
       |> Enum.map(fn project ->
-        Logger.info("Handling #{project["path_with_namespace"]}")
         Task.async(fn -> check_authors(req, project, file_path) end)
+      end)
+
+    registries_tasks =
+      response
+      |> Map.get(:body)
+      |> Enum.map(fn project ->
+        Task.async(fn -> check_registries(req, project, file_path) end)
       end)
 
     Task.await_many(activity_tasks)
     Task.await_many(authors_tasks)
+    Task.await_many(registries_tasks)
 
     headers = response.headers
     current_page = String.to_integer(hd(headers["x-page"]))
