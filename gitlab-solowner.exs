@@ -31,6 +31,7 @@ defmodule GitlabSolowners do
             if DateTime.compare(datetime, @one_year_ago) == :lt do
               row =
                 "#{project["namespace"]["path"]},#{project["path"]},#{commit["created_at"]},None"
+
               File.write(file_path, "#{row}\n", [:append])
             end
 
@@ -47,12 +48,13 @@ defmodule GitlabSolowners do
   def check_authors(req, project, file_path) do
     try do
       authors =
-        Req.get!(req, url: "/projects/#{project["id"]}/repository/commits?per_page=1000")
+        Req.get!(req, url: "/projects/#{project["id"]}/repository/commits?per_page=100")
         |> Map.get(:body)
         |> Enum.map(fn commit -> commit["author_email"] end)
         |> Enum.frequencies()
 
       total_commits = Enum.reduce(authors, 0, fn {_key, value}, acc -> acc + value end)
+
       authors_per_percent =
         Enum.map(authors, fn {name, count} -> {name, count / total_commits * 100} end)
 
@@ -68,11 +70,22 @@ defmodule GitlabSolowners do
   end
 
   def check_registries(req, project, file_path) do
-      Req.get!(req, url: "/projects/#{project["id"]}/registry/repositories")
-      |> Map.get(:body)
-      |> Enum.map(fn registry_repository ->
-          Logger.info("Handling #{project["path_with_namespace"]} :: #{registry_repository["path"]}")
-        end)
+    Req.get!(req, url: "/projects/#{project["id"]}/registry/repositories")
+    |> Map.get(:body)
+    |> Enum.map(fn registry_repository ->
+      response =
+        Req.get!(req, url: "/registry/repositories/#{registry_repository["id"]}?size=True")
+
+      case Map.get(response.body, "size") do
+        nil ->
+          Logger.info(
+            "Registry repository #{registry_repository["path"]} has no size information."
+          )
+
+        size ->
+          Logger.info("Registry repository #{registry_repository["path"]} has size: #{size}.")
+      end
+    end)
   end
 
   # Fetches all GitLab projects and processes them in pages, checking for activity and authors
