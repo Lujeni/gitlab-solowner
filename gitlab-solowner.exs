@@ -114,7 +114,7 @@ defmodule GitlabSolowners do
 
     if gitlab_api_paginate and next_page <= total_page do
       Logger.info("Next pagination #{current_page}-#{next_page} on #{total_page}")
-      get_projects(req, next_page, file_path)
+      get_projects(req, next_page, gitlab_api_paginate, file_path)
     end
   end
 
@@ -137,7 +137,7 @@ defmodule GitlabSolowners do
 
     gitlab_api_url = opts[:url] || System.get_env("GITLAB_API_URL") || @default_gitlab_api_url
     gitlab_api_token = opts[:token] || System.get_env("GITLAB_API_TOKEN")
-    gitlab_api_paginate = opts[:paginate] || System.get_env("GITLAB_API_paginate") || false
+    gitlab_api_paginate = opts[:paginate] || System.get_env("GITLAB_API_PAGINATE") || false
 
     if gitlab_api_token == nil do
       Logger.error("GitLab API Token is required. Use --token or set GITLAB_API_TOKEN.")
