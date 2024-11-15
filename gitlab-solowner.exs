@@ -7,10 +7,24 @@ Mix.install([
 require Logger
 
 defmodule GitlabSolowners do
+  @type args :: [String.t()]
+  @type opts :: %{optional(atom()) => term()}
+  @type project :: %{
+          "id" => integer(),
+          "path" => String.t(),
+          "namespace" => %{"path" => String.t()},
+          "path_with_namespace" => String.t()
+        }
+  @type commit :: %{"created_at" => String.t(), "author_email" => String.t()}
+  @type registry_repository :: %{"id" => integer(), "path" => String.t()}
+  @type req :: Req.Request.t()
+  @type file_path :: String.t()
+
   @default_gitlab_api_url "https://gitlab.com/api/v4"
   # Define the time boundary to consider a commit as inactive (two years ago)
   @one_year_ago DateTime.utc_now() |> DateTime.add(-365 * 2 * 24 * 60 * 60, :second)
 
+  @spec parse_args(args()) :: {opts(), [String.t()], [String.t()]}
   def parse_args(args) do
     OptionParser.parse(args,
       switches: [help: :boolean, url: :string, token: :string, paginate: :boolean],
@@ -19,6 +33,7 @@ defmodule GitlabSolowners do
   end
 
   # Fetches commit activity from a project and writes inactive repositories to a file
+  @spec check_activity(req(), project(), file_path()) :: :ok
   def check_activity(req, project, file_path) do
     try do
       Req.get!(req, url: "/projects/#{project["id"]}/repository/commits?per_page=1")
@@ -45,6 +60,7 @@ defmodule GitlabSolowners do
   end
 
   # Analyzes the authors of the repository to find dominant committers
+  @spec check_authors(req(), project(), file_path()) :: :ok
   def check_authors(req, project, file_path) do
     try do
       authors =
@@ -69,7 +85,8 @@ defmodule GitlabSolowners do
     end
   end
 
-  def check_registries(req, project, file_path) do
+  @spec check_registries(req(), project(), file_path()) :: :ok
+  def check_registries(req, project, _file_path) do
     Req.get!(req, url: "/projects/#{project["id"]}/registry/repositories")
     |> Map.get(:body)
     |> Enum.map(fn registry_repository ->
@@ -89,6 +106,7 @@ defmodule GitlabSolowners do
   end
 
   # Fetches all GitLab projects and processes them in pages, checking for activity and authors
+  @spec get_projects(req(), integer(), boolean(), file_path()) :: :ok
   def get_projects(req, page \\ 1, gitlab_api_paginate, file_path) do
     response = Req.get!(req, url: "/projects?archived=False&page=#{page}")
 
