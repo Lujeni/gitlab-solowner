@@ -10,13 +10,13 @@ defmodule GitlabSolowners do
   @type args :: [String.t()]
   @type opts :: %{optional(atom()) => term()}
   @type project :: %{
-          "id" => integer(),
-          "path" => String.t(),
-          "namespace" => %{"path" => String.t()},
-          "path_with_namespace" => String.t()
+          id: integer(),
+          path: String.t(),
+          namespace: %{path: String.t()},
+          path_with_namespace: String.t()
         }
-  @type commit :: %{"created_at" => String.t(), "author_email" => String.t()}
-  @type registry_repository :: %{"id" => integer(), "path" => String.t()}
+  @type commit :: %{created_at: String.t(), author_email: String.t()}
+  @type registry_repository :: %{id: integer(), path: String.t()}
   @type req :: Req.Request.t()
   @type file_path :: String.t()
 
